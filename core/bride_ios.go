@@ -4,7 +4,20 @@ package main
 
 //#include "bride.h"
 import "C"
-import "unsafe"
+import (
+	"sync"
+	"sync/atomic"
+	"unsafe"
+
+	"github.com/metacubex/mihomo/component/resolver"
+	"github.com/metacubex/mihomo/log"
+	"github.com/metacubex/tailscale/net/netmon"
+)
+
+var (
+	dnsUpdateMu  sync.Mutex
+	dnsUpdateSeq atomic.Uint64
+)
 
 func protect(callback unsafe.Pointer, fd int) bool {
 	return C.protect(callback, C.int(fd)) != 0
@@ -45,9 +58,27 @@ func writeSystemLog(level, message string) {
 }
 
 func handleUpdateDns(value string) {
+	// UpdateSystemDNS is Android-only in mihomo, so only the cache flush applies here.
+	seq := dnsUpdateSeq.Add(1)
+	safeGoDetached("updateDns", func() {
+		dnsUpdateMu.Lock()
+		defer dnsUpdateMu.Unlock()
+		if seq != dnsUpdateSeq.Load() {
+			return
+		}
+		log.Infoln("[DNS] updateDns %s", value)
+		resolver.ClearCache()
+		resolver.ResetConnection()
+	})
 }
 
 func handleUpdateNetwork(interfaceName, gateway string) {
+	defer func() {
+		if r := recover(); r != nil {
+			logError("panic in updateNetwork: %v\n%s", r, stackTrace())
+		}
+	}()
+	netmon.UpdateLastKnownDefaultRouteInterface(interfaceName)
 }
 
 func takeCString(s *C.char) string {
