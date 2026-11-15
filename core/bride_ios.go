@@ -58,7 +58,12 @@ func writeSystemLog(level, message string) {
 }
 
 func handleUpdateDns(value string) {
-	// UpdateSystemDNS is Android-only in mihomo, so only the cache flush applies here.
+	// The host DNS list is deliberately not installed. Android needs the
+	// push because it has no readable resolv.conf; on iOS mihomo's system
+	// resolver re-reads /etc/resolv.conf itself (at most every 5 minutes)
+	// and the tunnel's own DNS is blacklisted from it. The list would only
+	// feed proxy hostname resolution anyway — app DNS is captured by the
+	// tunnel.
 	seq := dnsUpdateSeq.Add(1)
 	safeGoDetached("updateDns", func() {
 		dnsUpdateMu.Lock()
